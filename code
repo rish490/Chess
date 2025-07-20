@@ -1,0 +1,177 @@
+// Chess Game Skeleton in C++ Based on Your Design
+
+#include <iostream>
+#include <vector>
+#include <memory>
+#include <optional>
+#include <string>
+using namespace std;
+
+enum class PieceType { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING };
+enum class Color { WHITE, BLACK };
+enum class GameState { ONGOING, CHECK, CHECKMATE, STALEMATE, INVALID_MOVE };
+
+struct Position {
+    int row, col;
+    bool operator==(const Position &other) const {
+        return row == other.row && col == other.col;
+    }
+};
+
+struct Move {
+    Position from;
+    Position to;
+    PieceType movedPiece;
+    bool wasDoubleStep = false;
+};
+
+class Piece {
+protected:
+    Color color;
+    PieceType type;
+public:
+    Piece(Color c, PieceType t) : color(c), type(t) {}
+    virtual ~Piece() = default;
+
+    Color getColor() const { return color; }
+    PieceType getType() const { return type; }
+};
+
+class Board {
+    vector<vector<shared_ptr<Piece>>> grid;
+    optional<Move> lastMove;
+
+public:
+    Board() : grid(8, vector<shared_ptr<Piece>>(8, nullptr)) {}
+
+    shared_ptr<Piece> getPiece(Position pos) {
+        return grid[pos.row][pos.col];
+    }
+
+    void setPiece(Position pos, shared_ptr<Piece> piece) {
+        grid[pos.row][pos.col] = piece;
+    }
+
+    bool isInside(Position pos) {
+        return pos.row >= 0 && pos.row < 8 && pos.col >= 0 && pos.col < 8;
+    }
+
+    GameState makeMove(Position from, Position to, Color playerColor) {
+        auto piece = getPiece(from);
+        if (!piece || piece->getColor() != playerColor) return GameState::INVALID_MOVE;
+
+        PieceType type = piece->getType();
+
+        // Simplified validation example for pawn
+        int dir = (playerColor == Color::WHITE) ? -1 : 1;
+
+        if (type == PieceType::PAWN) {
+            int deltaRow = to.row - from.row;
+            int deltaCol = abs(to.col - from.col);
+
+            if (deltaCol == 0 && deltaRow == dir && !getPiece(to)) {
+                // Normal move
+                setPiece(to, piece);
+                setPiece(from, nullptr);
+                lastMove = Move{from, to, type, false};
+                return GameState::ONGOING;
+            } else if (deltaCol == 1 && deltaRow == dir && getPiece(to) && getPiece(to)->getColor() != playerColor) {
+                // Capture
+                setPiece(to, piece);
+                setPiece(from, nullptr);
+                lastMove = Move{from, to, type, false};
+                return GameState::ONGOING;
+            } else if (deltaCol == 1 && deltaRow == dir && !getPiece(to) && lastMove &&
+                       lastMove->movedPiece == PieceType::PAWN &&
+                       abs(lastMove->from.row - lastMove->to.row) == 2 &&
+                       lastMove->to.row == from.row &&
+                       lastMove->to.col == to.col) {
+                // En passant
+                setPiece(to, piece);
+                setPiece(from, nullptr);
+                setPiece(lastMove->to, nullptr); // Remove captured pawn
+                lastMove = Move{from, to, type, false};
+                return GameState::ONGOING;
+            } else if (deltaCol == 0 && deltaRow == 2 * dir && from.row == (playerColor == Color::WHITE ? 6 : 1) &&
+                       !getPiece(to)) {
+                // Double step
+                setPiece(to, piece);
+                setPiece(from, nullptr);
+                lastMove = Move{from, to, type, true};
+                return GameState::ONGOING;
+            }
+        }
+
+        return GameState::INVALID_MOVE;
+    }
+};
+
+class PlayerStrategy {
+public:
+    virtual Move getMove(Board& board) = 0;
+    virtual ~PlayerStrategy() = default;
+};
+
+class HumanPlayerStrategy : public PlayerStrategy {
+public:
+    Move getMove(Board& board) override {
+        int x1, y1, x2, y2;
+        cout << "Enter move (from_row from_col to_row to_col): ";
+        cin >> x1 >> y1 >> x2 >> y2;
+        return Move{{x1, y1}, {x2, y2}, PieceType::PAWN}; // Simplified
+    }
+};
+
+class Player {
+    Color color;
+    unique_ptr<PlayerStrategy> strategy;
+
+public:
+    Player(Color c, unique_ptr<PlayerStrategy> s) : color(c), strategy(move(s)) {}
+
+    Move getMove(Board& board) {
+        return strategy->getMove(board);
+    }
+
+    Color getColor() const { return color; }
+};
+
+class GameContext {
+    Board board;
+    Player white;
+    Player black;
+    Color turn;
+
+public:
+    GameContext() : white(Color::WHITE, make_unique<HumanPlayerStrategy>()),
+                    black(Color::BLACK, make_unique<HumanPlayerStrategy>()),
+                    turn(Color::WHITE) {
+        // Init pawns for demonstration
+        for (int i = 0; i < 8; ++i) {
+            board.setPiece({1, i}, make_shared<Piece>(Color::BLACK, PieceType::PAWN));
+            board.setPiece({6, i}, make_shared<Piece>(Color::WHITE, PieceType::PAWN));
+        }
+    }
+
+    void play() {
+        while (true) {
+            cout << "Player " << (turn == Color::WHITE ? "White" : "Black") << " to move.\n";
+            Move move = (turn == Color::WHITE ? white : black).getMove(board);
+            GameState result = board.makeMove(move.from, move.to, turn);
+
+            if (result == GameState::INVALID_MOVE) {
+                cout << "Invalid move. Try again.\n";
+                continue;
+            }
+
+            // Skip check/checkmate/stalemate for now
+            turn = (turn == Color::WHITE) ? Color::BLACK : Color::WHITE;
+        }
+    }
+};
+
+int main() {
+    GameContext game;
+    game.play();
+    return 0;
+}
